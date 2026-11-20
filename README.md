@@ -2,36 +2,39 @@
 
 # About
 
-**`device`** is a device manager for the [Omni Shell Framework](../omni/README.md). It provides a unified CLI for managing devices of many classes — monitors, networks, Bluetooth, USB, PCI, audio, power, backlight, input devices, and video cameras — with dynamic tab completion of device names where available.
+**`device`** is a device manager for the [Omni Shell Framework](../omni/README.md). It provides a unified CLI for managing devices of many classes — displays, networks, bluetooth, usb, pci, audio, power, backlight, input devices, and video cameras — with dynamic tab completion.
+
+Where a module has a standard Linux tool, it uses that tool (`xrandr`, `nmcli`, `bluetoothctl`, `lsusb`, `lspci`, `pactl`/`amixer`, `xinput`, `v4l2-ctl`); where it does not, it falls back to the kernel's own interfaces through sysfs (`/sys/class/drm`, `/sys/class/net`, `/sys/bus/usb/devices`, `/sys/bus/pci/devices`, `/sys/class/input`, `/sys/class/video4linux`) or to other common tools (`amixer` instead of `pactl`, `xbacklight` instead of sysfs writes). This makes the tool work on machines that manage devices through other drivers or CLIs.
 
 ## Key Features
 
-- **Monitor Management (`device mon`)**: List connected displays (all, or filtered by enabled/disabled state), enable or disable outputs, set a preferred resolution, and position monitors relative to a primary or reference display (`--left` / `--right` / `--above` / `--below` / `--same-as`).
-- **Network Management (`device wifi`, `device net`)**: `wifi` scans nearby networks, lists registered Wi-Fi profiles, creates open or WPA-PSK profiles, and connects/disconnects/removes profiles; `net` lists all network devices.
-- **Bluetooth Management (`device bt`)**: List Bluetooth devices (`--paired` for paired only) and connect, disconnect, or remove them.
-- **USB Management (`device usb`)**: List USB devices via `lsusb`.
-- **PCI Management (`device pci`)**: List PCI devices via `lspci -nnk`.
-- **Audio Management (`device audio`)**: List audio sinks and sources, toggle default sink mute, set default sink volume.
+- **Monitor Management (`device monitor`)**: List connected displays (all, or filtered by enabled/disabled state), enable or disable outputs, set a preferred resolution, and position monitors relative to a primary or reference display (`--left` / `--right` / `--above` / `--below` / `--same-as`).
+- **Network Management (`device network`)**: List all network devices with their state (nmcli, or sysfs).
+- **Wireless Management (`device wifi`)**: Scan nearby networks, list registered Wi-Fi profiles, create open or WPA-PSK profiles, and connect/disconnect/remove profiles.
+- **Bluetooth Management (`device bluetooth`)**: List Bluetooth devices (`--paired` for paired only) and connect, disconnect, or remove them.
+- **USB Management (`device usb`)**: List USB devices via `lsusb` (or sysfs).
+- **PCI Management (`device pci`)**: List PCI devices via `lspci` (or sysfs).
+- **Audio Management (`device audio`)**: List audio sinks and sources, toggle default sink mute, set default sink volume (pactl, or amixer).
 - **Power Management (`device power`)**: List power supplies with status and capacity from sysfs.
-- **Backlight Management (`device light`)**: List backlight devices with current and max brightness; set brightness as a percent of max.
-- **Input Device Management (`device input`)**: List input devices; enable or disable them.
-- **Camera Management (`device cam`)**: List video capture devices via `v4l2-ctl`.
+- **Backlight Management (`device light`)**: List backlight devices with current and max brightness; set brightness as a percent of max (sysfs, or `xbacklight`).
+- **Input Device Management (`device input`)**: List input devices (xinput, or sysfs); enable or disable them.
+- **Camera Management (`device camera`)**: List video capture devices via `v4l2-ctl`, `/dev/video*`, or sysfs.
 - **Device Overview (`device ls`)**: List all devices across modules.
 
 ## Prerequisites
 
-Each module uses a standard Linux tool; install the ones you need:
+Each module has a preferred tool and portable fallbacks; the tool works without any of them by using sysfs directly:
 
-- `xrandr` — required for `device mon` (display management)
-- `nmcli` — required for `device wifi` and `device net`
-- `bluetoothctl` — required for `device bt`
-- `lsusb` — required for `device usb`
-- `lspci` — required for `device pci`
-- `pactl` — required for `device audio`
-- `xinput` — required for `device input`
-- `v4l2-ctl` — required for `device cam` (falls back to `/dev/video*`)
-- `/sys/class/power_supply` — `device power` (available on Linux by default)
-- `/sys/class/backlight` — `device light` (available on Linux by default; root needed to change brightness)
+- `xrandr` — `device monitor` (preferred); without it, falls back to sysfs `/sys/class/drm` (ls and enable/disable on writable systems)
+- `nmcli` — `device network` (preferred); without it, falls back to sysfs `/sys/class/net`
+- `bluetoothctl` — `device bluetooth` (required; BlueZ is the standard tool)
+- `lsusb` — `device usb` (preferred); without it, falls back to sysfs `/sys/bus/usb/devices`
+- `lspci` — `device pci` (preferred); without it, falls back to sysfs `/sys/bus/pci/devices`
+- `pactl` — `device audio` (preferred); without it, falls back to `amixer` (ALSA)
+- `amixer` — `device audio` (ALSA fallback)
+- `xinput` — `device input` (preferred); without it, `device input ls` falls back to sysfs `/sys/class/input`
+- `v4l2-ctl` — `device camera` (preferred); without it, falls back to `/dev/video*` and then sysfs `/sys/class/video4linux`
+- `xbacklight` — `device light` (alternative to sysfs writes)
 
 ---
 
@@ -73,39 +76,46 @@ device <module> <command> [options]
 device ls
 ```
 
-## Monitor Management (`device mon`)
+## Monitor Management (`device monitor`)
 
 ```bash
 # List all connected monitors
-device mon ls
+device monitor ls
 
 # List all monitors, including disconnected ones
-device mon ls -a|--all
+device monitor ls -a|--all
 
 # List only active/enabled monitors
-device mon ls -e|--enabled
+device monitor ls -e|--enabled
 
 # List only disabled monitors (connected-off and disconnected)
-device mon ls -d|--disabled
+device monitor ls -d|--disabled
 
 # Enable external HDMI monitor and place it to the right of eDP-1
-device mon enable HDMI-1
+device monitor enable HDMI-1
 
 # Enable a monitor using its preferred resolution
-device mon enable HDMI-1 --res 1920x1080
+device monitor enable HDMI-1 --res 1920x1080
 
 # Turn off a monitor when undocking
-device mon disable HDMI-1
+device monitor disable HDMI-1
 
 # Position <monitor> relative to <ref_monitor>; if omitted, defaults to primary
-device mon mv HDMI-1 --right eDP-1
-device mon mv HDMI-1 --left
-device mon mv eDP-1 --above HDMI-1
-device mon mv eDP-1 --below HDMI-1
-device mon mv eDP-1 --same-as HDMI-1
+device monitor move HDMI-1 --right eDP-1
+device monitor move HDMI-1 --left
+device monitor move eDP-1 --above HDMI-1
+device monitor move eDP-1 --below HDMI-1
+device monitor move eDP-1 --same-as HDMI-1
 ```
 
-## Wi-Fi Management (`device wifi`)
+## Network Devices (`device network`)
+
+```bash
+# List all network devices (wired, wireless, vpn, ...) with their state
+device network ls
+```
+
+## Wireless Management (`device wifi`)
 
 ```bash
 # Scan and list nearby Wi-Fi networks
@@ -143,30 +153,23 @@ device wifi disconnect guest-wifi
 device wifi rm guest-wifi
 ```
 
-## Network Devices (`device net`)
-
-```bash
-# List all network devices (wired, wireless, vpn, ...) with their state
-device net ls
-```
-
-## Bluetooth Management (`device bt`)
+## Bluetooth Management (`device bluetooth`)
 
 ```bash
 # List all Bluetooth devices
-device bt ls
+device bluetooth ls
 
 # List paired Bluetooth devices only
-device bt ls -p|--paired
+device bluetooth ls -p|--paired
 
 # Connect to a Bluetooth device
-device bt connect <addr>
+device bluetooth connect <addr>
 
 # Disconnect a Bluetooth device
-device bt disconnect <addr>
+device bluetooth disconnect <addr>
 
 # Remove a Bluetooth device
-device bt rm <addr>
+device bluetooth remove <addr>
 ```
 
 ## USB Devices (`device usb`)
@@ -240,11 +243,11 @@ device input disable <id>
 device input enable <id>
 ```
 
-## Camera Management (`device cam`)
+## Camera Management (`device camera`)
 
 ```bash
 # List video capture devices
-device cam ls
+device camera ls
 ```
 
 Example output:
@@ -255,3 +258,7 @@ Brio 100 (usb-0000:00:14.0-2):
 	/dev/video1
 	/dev/media0
 ```
+
+## Compatibility
+
+The previous short names still work: `device mon`, `device bt`, `device cam`, and `device net` dispatch to `device monitor`, `device bluetooth`, `device camera`, and `device network`. The `device monitor move` command is also available as `device monitor mv`.

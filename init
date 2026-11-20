@@ -8,74 +8,74 @@ USAGE:
     device <module> <command> [args]
 
 MODULES:
-    mon     displays and positions (xrandr)
-    wifi    wireless networks (nmcli)
-    net     all network devices (nmcli)
-    bt      bluetooth devices (bluetoothctl)
-    usb     usb devices (lsusb)
-    pci     pci devices (lspci)
-    audio   audio sinks & sources (pactl)
-    power   power devices & battery status (sysfs)
-    light   backlight devices (sysfs)
-    input   input devices (xinput)
-    cam     video capture devices (v4l2-ctl)
-    ls      list all devices across modules
+    monitor     displays and positions (xrandr, or sysfs /sys/class/drm)
+    network     all network devices (nmcli, or sysfs /sys/class/net)
+    wifi        wireless networks (nmcli)
+    bluetooth   bluetooth devices (bluetoothctl)
+    usb         usb devices (lsusb, or sysfs /sys/bus/usb/devices)
+    pci         pci devices (lspci, or sysfs /sys/bus/pci/devices)
+    audio       audio sinks & sources (pactl, or amixer)
+    power       power devices & battery status (sysfs)
+    light       backlight devices (sysfs, or xbacklight)
+    input       input devices (xinput, or sysfs /sys/class/input)
+    camera      video capture devices (v4l2-ctl, or /dev/video*, or sysfs)
+    ls          list all devices across modules
 
-MON COMMANDS:
-    ls [-a|--all]                list connected monitors
-    ls -e|--enabled              list enabled monitors only
-    ls -d|--disabled             list disabled monitors (connected-off + disconnected)
-    enable <mon> [--res WxH]     activate a monitor (preferred resolution with --res)
-    disable <mon>                deactivate a monitor
-    mv <mon> -l|--left [<ref>]   position <mon> to the left of <ref> (default: primary)
-    mv <mon> -r|--right [<ref>]  position <mon> to the right of <ref> (default: primary)
-    mv <mon> -a|--above [<ref>]  position <mon> above <ref> (default: primary)
-    mv <mon> -b|--below [<ref>]  position <mon> below <ref> (default: primary)
-    mv <mon> -s|--same-as <ref>  position <mon> on the same display as <ref>
+MONITOR COMMANDS:
+    monitor ls [-a|--all]                list connected monitors
+    monitor ls -e|--enabled              list enabled monitors only
+    monitor ls -d|--disabled             list disabled monitors (connected-off + disconnected)
+    monitor enable <mon> [--res WxH]     activate a monitor (preferred resolution with --res)
+    monitor disable <mon>                deactivate a monitor
+    monitor move <mon> -l|--left [<ref>]   position <mon> to the left of <ref> (default: primary)
+    monitor move <mon> -r|--right [<ref>]  position <mon> to the right of <ref> (default: primary)
+    monitor move <mon> -a|--above [<ref>]  position <mon> above <ref> (default: primary)
+    monitor move <mon> -b|--below [<ref>]  position <mon> below <ref> (default: primary)
+    monitor move <mon> -s|--same-as <ref>  position <mon> on the same display as <ref>
+
+NETWORK COMMANDS:
+    network ls                           list all network devices (type, state)
 
 WIFI COMMANDS:
-    ls                           scan and list nearby networks
-    ls -r|--registered           list registered wifi profiles
-    set|new <name> --id <id>     register a wifi profile (WPA-PSK with --pass)
-    connect <name>               connect to a registered wifi profile
-    disconnect <name>            disconnect a wifi profile
-    rm <name>                    delete a registered wifi profile
+    wifi ls                              scan and list nearby networks
+    wifi ls -r|--registered              list registered wifi profiles
+    wifi set|new <name> --id <id>        register a wifi profile (WPA-PSK with --pass)
+    wifi connect <name>                  connect to a registered wifi profile
+    wifi disconnect <name>               disconnect a wifi profile
+    wifi rm <name>                       delete a registered wifi profile
 
-NET COMMANDS:
-    ls                           list all network devices (type, state)
-
-BT COMMANDS:
-    ls [-p|--paired]             list bluetooth devices
-    connect <addr>               connect to a bluetooth device
-    disconnect <addr>            disconnect a bluetooth device
-    rm <addr>                    remove a bluetooth device
+BLUETOOTH COMMANDS:
+    bluetooth ls [-p|--paired]           list bluetooth devices
+    bluetooth connect <addr>             connect to a bluetooth device
+    bluetooth disconnect <addr>          disconnect a bluetooth device
+    bluetooth remove <addr>              remove a bluetooth device
 
 USB COMMANDS:
-    ls                           list usb devices (lsusb)
+    usb ls                               list usb devices (lsusb, or sysfs)
 
 PCI COMMANDS:
-    ls                           list pci devices (lspci -nnk)
+    pci ls                               list pci devices (lspci, or sysfs)
 
 AUDIO COMMANDS:
-    ls                           list audio sinks and sources
-    mute                         toggle mute of the default sink
-    unmute                       set the default sink to unmuted
-    set <vol>                    set the default sink volume as a percent
+    audio ls                             list audio sinks and sources
+    audio mute                           toggle mute of the default sink
+    audio unmute                         set the default sink to unmuted
+    audio set <vol>                      set the default sink volume as a percent
 
 POWER COMMANDS:
-    ls                           list power devices with status and capacity
+    power ls                             list power devices with status and capacity
 
 LIGHT COMMANDS:
-    ls                           list backlight devices with current and max brightness
-    set <pct> [dev]              set backlight brightness as a percent of max
+    light ls                             list backlight devices with current and max brightness
+    light set <pct> [dev]                set backlight brightness as a percent of max
 
 INPUT COMMANDS:
-    ls                           list input devices
-    disable <id>                 disable an input device
-    enable <id>                  enable an input device
+    input ls                             list input devices
+    input disable <id>                   disable an input device
+    input enable <id>                    enable an input device
 
-CAM COMMANDS:
-    ls                           list video capture devices (v4l2-ctl)
+CAMERA COMMANDS:
+    camera ls                            list video capture devices
 EOF
     }
 
@@ -85,9 +85,21 @@ EOF
         return 1
     }
 
-    # --- MON: displays (xrandr) ---
+    __device__.has() {
+        command -v "$1" >/dev/null 2>&1
+    }
 
-    __device__.mon.ls() {
+    # --- MONITOR: displays (xrandr, or sysfs /sys/class/drm) ---
+
+    __device__.monitor.ls() {
+        if __device__.has xrandr; then
+            __device__.monitor.ls_xrandr "$@"
+        else
+            __device__.monitor.ls_sysfs "$@"
+        fi
+    }
+
+    __device__.monitor.ls_xrandr() {
         local show_all=0 show_enabled=0 show_disabled=0 line mon is_enabled
         while [[ $# -gt 0 ]]; do
             case "$1" in
@@ -121,7 +133,19 @@ EOF
         done < <(xrandr)
     }
 
-    __device__.mon.enable() {
+    __device__.monitor.ls_sysfs() {
+        local dir name status
+        for dir in /sys/class/drm/card*-*; do
+            [[ -d "$dir" ]] || continue
+            status=$(cat "$dir/status" 2>/dev/null)
+            [[ "$status" == "connected" ]] || continue
+            name="${dir##*/}"
+            name="${name#card*-}"
+            [[ -n "$name" ]] && echo "$name"
+        done
+    }
+
+    __device__.monitor.enable() {
         local mon="${1:-}" mode=""
         shift 2>/dev/null
         while [[ $# -gt 0 ]]; do
@@ -131,20 +155,65 @@ EOF
             shift
         done
 
-        [[ -z "$mon" ]] && return 1
-        if [[ -n "$mode" ]]; then
-            xrandr --output "$mon" $mode
+        if [[ -z "$mon" ]]; then
+            echo "device monitor enable: missing monitor" >&2
+            return 1
+        fi
+
+        if __device__.has xrandr; then
+            if [[ -n "$mode" ]]; then
+                xrandr --output "$mon" $mode
+            else
+                xrandr --output "$mon" --auto
+            fi
         else
-            xrandr --output "$mon" --auto
+            __device__.monitor.enable_sysfs "$mon"
         fi
     }
 
-    __device__.mon.disable() {
-        [[ -z "${1:-}" ]] && return 1
-        xrandr --output "$1" --off
+    __device__.monitor.enable_sysfs() {
+        local mon="$1" dir=""
+        for dir in /sys/class/drm/card*-$mon; do
+            [[ -d "$dir" ]] && break
+            dir=""
+        done
+        if [[ -z "$dir" ]]; then
+            echo "device monitor enable: '$mon' not found via sysfs" >&2
+            return 1
+        fi
+        if echo enabled > "$dir/status" 2>/dev/null || echo 1 > "$dir/enabled" 2>/dev/null; then
+            return 0
+        fi
+        echo "device monitor enable: cannot enable '$mon' via sysfs (write denied?)" >&2
+        return 1
     }
 
-    __device__.mon.mv() {
+    __device__.monitor.disable() {
+        local mon="${1:-}" dir=""
+        if [[ -z "$mon" ]]; then
+            echo "device monitor disable: missing monitor" >&2
+            return 1
+        fi
+        if __device__.has xrandr; then
+            xrandr --output "$mon" --off
+            return $?
+        fi
+        for dir in /sys/class/drm/card*-$mon; do
+            [[ -d "$dir" ]] && break
+            dir=""
+        done
+        if [[ -z "$dir" ]]; then
+            echo "device monitor disable: '$mon' not found via sysfs" >&2
+            return 1
+        fi
+        if echo disabled > "$dir/status" 2>/dev/null || echo 0 > "$dir/enabled" 2>/dev/null; then
+            return 0
+        fi
+        echo "device monitor disable: cannot disable '$mon' via sysfs (write denied?)" >&2
+        return 1
+    }
+
+    __device__.monitor.move() {
         local mon="${1:-}" pos_flag="" pos_ref="" line
         shift 2>/dev/null
         while [[ $# -gt 0 ]]; do
@@ -159,9 +228,11 @@ EOF
         done
 
         if [[ -z "$mon" || -z "$pos_flag" ]]; then
-            echo "device mon mv: missing monitor or direction" >&2
+            echo "device monitor move: missing monitor or direction" >&2
             return 1
         fi
+
+        __device__.need xrandr || return 1
 
         if [[ -z "$pos_ref" ]]; then
             # default reference: the primary monitor
@@ -174,23 +245,52 @@ EOF
         fi
 
         if [[ -z "$pos_ref" ]]; then
-            echo "device mon mv: no reference monitor given and none is primary" >&2
+            echo "device monitor move: no reference monitor given and none is primary" >&2
             return 1
         fi
 
         xrandr --output "$mon" --auto "$pos_flag" "$pos_ref"
     }
 
-    __device__.mon() {
+    __device__.monitor() {
         local cmd="${1:-}"
         shift 2>/dev/null
         case "$cmd" in
-            ls) __device__.mon.ls "$@" ;;
-            enable) __device__.mon.enable "$@" ;;
-            disable) __device__.mon.disable "$@" ;;
-            mv) __device__.mon.mv "$@" ;;
-            "") echo "device mon: missing command (ls|enable|disable|mv)" >&2; return 1 ;;
-            *) echo "device mon: Unknown command '$cmd'" >&2; return 1 ;;
+            ls) __device__.monitor.ls "$@" ;;
+            enable) __device__.monitor.enable "$@" ;;
+            disable) __device__.monitor.disable "$@" ;;
+            move|mv) __device__.monitor.move "$@" ;;
+            "") echo "device monitor: missing command (ls|enable|disable|move)" >&2; return 1 ;;
+            *) echo "device monitor: Unknown command '$cmd'" >&2; return 1 ;;
+        esac
+    }
+
+    # --- NETWORK: all network devices (nmcli, or sysfs /sys/class/net) ---
+
+    __device__.network.ls() {
+        if __device__.has nmcli; then
+            nmcli -t -f DEVICE,TYPE,STATE dev status
+        else
+            __device__.network.ls_sysfs
+        fi
+    }
+
+    __device__.network.ls_sysfs() {
+        local d state
+        for d in /sys/class/net/*; do
+            [[ -d "$d" ]] || continue
+            state=$(cat "$d/operstate" 2>/dev/null)
+            printf '%-12s %s\n' "${d##*/}" "${state:-unknown}"
+        done
+    }
+
+    __device__.network() {
+        local cmd="${1:-}"
+        shift 2>/dev/null
+        case "$cmd" in
+            ls) __device__.network.ls "$@" ;;
+            "") echo "device network: missing command (ls)" >&2; return 1 ;;
+            *) echo "device network: Unknown command '$cmd'" >&2; return 1 ;;
         esac
     }
 
@@ -281,26 +381,9 @@ EOF
         esac
     }
 
-    # --- NET: all network devices (nmcli) ---
+    # --- BLUETOOTH: bluetooth devices (bluetoothctl) ---
 
-    __device__.net.ls() {
-        __device__.need nmcli || return 1
-        nmcli -t -f DEVICE,TYPE,STATE dev status
-    }
-
-    __device__.net() {
-        local cmd="${1:-}"
-        shift 2>/dev/null
-        case "$cmd" in
-            ls) __device__.net.ls "$@" ;;
-            "") echo "device net: missing command (ls)" >&2; return 1 ;;
-            *) echo "device net: Unknown command '$cmd'" >&2; return 1 ;;
-        esac
-    }
-
-    # --- BT: bluetooth devices (bluetoothctl) ---
-
-    __device__.bt.ls() {
+    __device__.bluetooth.ls() {
         local show_paired=0
         while [[ $# -gt 0 ]]; do
             case "$1" in
@@ -317,45 +400,64 @@ EOF
         fi
     }
 
-    __device__.bt.connect() {
+    __device__.bluetooth.connect() {
         local addr="${1:-}"
         [[ -z "$addr" ]] && return 1
         __device__.need bluetoothctl || return 1
         bluetoothctl connect "$addr"
     }
 
-    __device__.bt.disconnect() {
+    __device__.bluetooth.disconnect() {
         local addr="${1:-}"
         [[ -z "$addr" ]] && return 1
         __device__.need bluetoothctl || return 1
         bluetoothctl disconnect "$addr"
     }
 
-    __device__.bt.rm() {
+    __device__.bluetooth.remove() {
         local addr="${1:-}"
         [[ -z "$addr" ]] && return 1
         __device__.need bluetoothctl || return 1
         bluetoothctl remove "$addr"
     }
 
-    __device__.bt() {
+    __device__.bluetooth() {
         local cmd="${1:-}"
         shift 2>/dev/null
         case "$cmd" in
-            ls) __device__.bt.ls "$@" ;;
-            connect) __device__.bt.connect "$@" ;;
-            disconnect) __device__.bt.disconnect "$@" ;;
-            rm) __device__.bt.rm "$@" ;;
-            "") echo "device bt: missing command (ls|connect|disconnect|rm)" >&2; return 1 ;;
-            *) echo "device bt: Unknown command '$cmd'" >&2; return 1 ;;
+            ls) __device__.bluetooth.ls "$@" ;;
+            connect) __device__.bluetooth.connect "$@" ;;
+            disconnect) __device__.bluetooth.disconnect "$@" ;;
+            remove|rm) __device__.bluetooth.remove "$@" ;;
+            "") echo "device bluetooth: missing command (ls|connect|disconnect|remove)" >&2; return 1 ;;
+            *) echo "device bluetooth: Unknown command '$cmd'" >&2; return 1 ;;
         esac
     }
 
-    # --- USB: usb devices (lsusb) ---
+    # --- USB: usb devices (lsusb, or sysfs /sys/bus/usb/devices) ---
 
     __device__.usb.ls() {
-        __device__.need lsusb || return 1
-        lsusb
+        if __device__.has lsusb; then
+            lsusb
+        else
+            __device__.usb.ls_sysfs
+        fi
+    }
+
+    __device__.usb.ls_sysfs() {
+        local d vendor product name
+        for d in /sys/bus/usb/devices/*; do
+            [[ -d "$d" ]] || continue
+            vendor=$(cat "$d/idVendor" 2>/dev/null)
+            [[ -n "$vendor" ]] || continue
+            product=$(cat "$d/idProduct" 2>/dev/null)
+            name=$(cat "$d/product" 2>/dev/null)
+            if [[ -n "$name" ]]; then
+                printf '%s:%s  %s\n' "$vendor" "${product:-?}" "$name"
+            else
+                printf '%s:%s\n' "$vendor" "${product:-?}"
+            fi
+        done
     }
 
     __device__.usb() {
@@ -368,11 +470,28 @@ EOF
         esac
     }
 
-    # --- PCI: pci devices (lspci) ---
+    # --- PCI: pci devices (lspci, or sysfs /sys/bus/pci/devices) ---
 
     __device__.pci.ls() {
-        __device__.need lspci || return 1
-        lspci -nnk
+        if __device__.has lspci; then
+            lspci -nnk
+        else
+            __device__.pci.ls_sysfs
+        fi
+    }
+
+    __device__.pci.ls_sysfs() {
+        local d addr vendor device class driver
+        for d in /sys/bus/pci/devices/*; do
+            [[ -d "$d" ]] || continue
+            addr="${d##*/}"
+            vendor=$(cat "$d/vendor" 2>/dev/null)
+            device=$(cat "$d/device" 2>/dev/null)
+            class=$(cat "$d/class" 2>/dev/null)
+            driver=$(readlink "$d/driver" 2>/dev/null); driver="${driver##*/}"
+            printf '%s  class=%s vendor=%s:%s driver=%s\n' \
+                "$addr" "${class:-?}" "${vendor:-?}" "${device:-?}" "${driver:-none}"
+        done
     }
 
     __device__.pci() {
@@ -385,24 +504,41 @@ EOF
         esac
     }
 
-    # --- AUDIO: audio sinks & sources (pactl) ---
+    # --- AUDIO: audio sinks & sources (pactl, or amixer) ---
 
     __device__.audio.ls() {
-        __device__.need pactl || return 1
-        echo "sinks:"
-        pactl list sinks short
-        echo "sources:"
-        pactl list sources short
+        if __device__.has pactl; then
+            echo "sinks:"
+            pactl list sinks short
+            echo "sources:"
+            pactl list sources short
+        elif __device__.has amixer; then
+            __device__.audio.ls_amixer
+        fi
+    }
+
+    __device__.audio.ls_amixer() {
+        amixer scontents 2>/dev/null | grep -E "^Simple mixer control" | awk -F"'" '{print $2}'
     }
 
     __device__.audio.mute() {
-        __device__.need pactl || return 1
-        pactl set-sink-mute @DEFAULT_SINK@ toggle
+        if __device__.has pactl; then
+            __device__.need pactl || return 1
+            pactl set-sink-mute @DEFAULT_SINK@ toggle
+        elif __device__.has amixer; then
+            __device__.need amixer || return 1
+            amixer set 'Master' toggle
+        fi
     }
 
     __device__.audio.unmute() {
-        __device__.need pactl || return 1
-        pactl set-sink-mute @DEFAULT_SINK@ no
+        if __device__.has pactl; then
+            __device__.need pactl || return 1
+            pactl set-sink-mute @DEFAULT_SINK@ no
+        elif __device__.has amixer; then
+            __device__.need amixer || return 1
+            amixer set 'Master' on
+        fi
     }
 
     __device__.audio.set() {
@@ -410,8 +546,13 @@ EOF
         [[ -z "$vol" ]] && return 1
         [[ "$vol" =~ ^-?[0-9]+%?$ ]] || { echo "device audio set: invalid volume '$vol'" >&2; return 1; }
         vol="${vol%"%"}"
-        __device__.need pactl || return 1
-        pactl set-sink-volume @DEFAULT_SINK@ "${vol}%"
+        if __device__.has pactl; then
+            __device__.need pactl || return 1
+            pactl set-sink-volume @DEFAULT_SINK@ "${vol}%"
+        elif __device__.has amixer; then
+            __device__.need amixer || return 1
+            amixer set 'Master' "${vol}%"
+        fi
     }
 
     __device__.audio() {
@@ -456,7 +597,7 @@ EOF
         esac
     }
 
-    # --- LIGHT: backlight (sysfs) ---
+    # --- LIGHT: backlight (sysfs, or xbacklight) ---
 
     __device__.light.ls() {
         local found=0 dir name cur max pct
@@ -473,7 +614,16 @@ EOF
             fi
             printf '%-20s current=%-6s max=%-6s brightness=%s%%\n' "$name" "${cur:-n/a}" "${max:-n/a}" "$pct"
         done
-        (( found )) || { echo "device light: no backlight device found" >&2; return 1; }
+        if (( ! found )); then
+            if __device__.has xbacklight; then
+                local pct
+                pct=$(xbacklight -get 2>/dev/null)
+                [[ -n "$pct" ]] && printf 'xbacklight  %s%%\n' "$pct"
+                return 0
+            fi
+            echo "device light: no backlight device found" >&2
+            return 1
+        fi
     }
 
     __device__.light.set() {
@@ -485,6 +635,7 @@ EOF
         for dir in /sys/class/backlight/*; do
             [[ -d "$dir" ]] && dirs+=("$dir")
         done
+
         if [[ -n "$dev" ]]; then
             dir=""
             for d in "${dirs[@]}"; do
@@ -493,18 +644,34 @@ EOF
             [[ -n "$dir" ]] || { echo "device light: no backlight device named '$dev'" >&2; return 1; }
         elif [[ -n "${dirs[0]:-}" ]]; then
             dir="${dirs[0]}"
-        else
-            echo "device light: no backlight device found" >&2
+        fi
+
+        if [[ -n "$dir" ]]; then
+            name="${dir##*/}"
+            max=$(cat "$dir/max_brightness" 2>/dev/null)
+            [[ -n "$max" && "$max" != 0 ]] || { echo "device light: '$name' has no writable brightness" >&2; return 1; }
+            val=$(( pct * max / 100 ))
+            (( val > max )) && val=$max
+            if echo "$val" > "$dir/brightness" 2>/dev/null; then
+                printf 'device light: set %s brightness to %s%% (%s/%s)\n' "$name" "$pct" "$val" "$max"
+                return 0
+            fi
+            # sysfs write not permitted: fall back to the xbacklight tool
+            if __device__.has xbacklight; then
+                xbacklight -set "$pct"
+                return $?
+            fi
+            echo "device light: cannot set brightness of '$name' (check permissions)" >&2
             return 1
         fi
 
-        name="${dir##*/}"
-        max=$(cat "$dir/max_brightness" 2>/dev/null)
-        [[ -n "$max" && "$max" != 0 ]] || { echo "device light: '$name' has no writable brightness" >&2; return 1; }
-        val=$(( pct * max / 100 ))
-        (( val > max )) && val=$max
-        echo "$val" > "$dir/brightness" 2>/dev/null || { echo "device light: cannot set brightness of '$name' (check permissions)" >&2; return 1; }
-        printf 'device light: set %s brightness to %s%% (%s/%s)\n' "$name" "$pct" "$val" "$max"
+        # no sysfs backlights: try the xbacklight tool
+        if __device__.has xbacklight; then
+            xbacklight -set "$pct"
+            return $?
+        fi
+        echo "device light: no backlight device found" >&2
+        return 1
     }
 
     __device__.light() {
@@ -518,22 +685,40 @@ EOF
         esac
     }
 
-    # --- INPUT: input devices (xinput) ---
+    # --- INPUT: input devices (xinput, or sysfs /sys/class/input) ---
 
     __device__.input.ls() {
-        __device__.need xinput || return 1
-        xinput list
+        if __device__.has xinput; then
+            xinput list
+        else
+            __device__.input.ls_sysfs
+        fi
+    }
+
+    __device__.input.ls_sysfs() {
+        local d name
+        for d in /sys/class/input/*; do
+            [[ -e "$d" ]] || continue
+            name=$(cat "$d/name" 2>/dev/null)
+            if [[ -n "$name" ]]; then
+                printf '%s  %s\n' "${d##*/}" "$name"
+            else
+                printf '%s\n' "${d##*/}"
+            fi
+        done
     }
 
     __device__.input.disable() {
         local id="${1:-}"
         [[ -z "$id" ]] && return 1
+        __device__.need xinput || return 1
         xinput --disable "$id"
     }
 
     __device__.input.enable() {
         local id="${1:-}"
         [[ -z "$id" ]] && return 1
+        __device__.need xinput || return 1
         xinput --enable "$id"
     }
 
@@ -549,26 +734,35 @@ EOF
         esac
     }
 
-    # --- CAM: video capture devices (v4l2-ctl) ---
+    # --- CAMERA: video capture devices (v4l2-ctl, or /dev/video*, or sysfs) ---
 
-    __device__.cam.ls() {
-        __device__.need v4l2-ctl || return 1
+    __device__.camera.ls() {
+        if __device__.has v4l2-ctl; then
+            v4l2-ctl --list-devices
+            return 0
+        fi
         local out
-        out=$(v4l2-ctl --list-devices 2>/dev/null)
+        out=$(ls /dev/video* 2>/dev/null)
         if [[ -n "$out" ]]; then
             printf '%s\n' "$out"
-        else
-            ls /dev/video* 2>/dev/null || { echo "device cam: no video capture devices found" >&2; return 1; }
+            return 0
         fi
+        out=$(ls /sys/class/video4linux/* 2>/dev/null)
+        if [[ -n "$out" ]]; then
+            printf '%s\n' "$out"
+            return 0
+        fi
+        echo "device camera: no video capture devices found" >&2
+        return 1
     }
 
-    __device__.cam() {
+    __device__.camera() {
         local cmd="${1:-}"
         shift 2>/dev/null
         case "$cmd" in
-            ls) __device__.cam.ls "$@" ;;
-            "") echo "device cam: missing command (ls)" >&2; return 1 ;;
-            *) echo "device cam: Unknown command '$cmd'" >&2; return 1 ;;
+            ls) __device__.camera.ls "$@" ;;
+            "") echo "device camera: missing command (ls)" >&2; return 1 ;;
+            *) echo "device camera: Unknown command '$cmd'" >&2; return 1 ;;
         esac
     }
 
@@ -576,12 +770,19 @@ EOF
 
     __device__.ls() {
         local mod out
-        for mod in mon wifi net bt usb pci audio power light input cam; do
+        for mod in monitor network wifi bluetooth usb pci audio power light input camera; do
             out=$(__device__."$mod".ls 2>/dev/null) || continue
             [[ -n "$out" ]] || continue
             printf '== %s ==\n%s\n' "$mod" "$out"
         done
     }
+
+    # --- Compatibility aliases for the previous short names ---
+
+    __device__.mon() { __device__.monitor "$@"; }
+    __device__.net() { __device__.network "$@"; }
+    __device__.bt() { __device__.bluetooth "$@"; }
+    __device__.cam() { __device__.camera "$@"; }
 
     device() {
         local cmd="${1:-}"
@@ -591,16 +792,19 @@ EOF
         fi
         shift 2>/dev/null
         case "$cmd" in
-            mon|wifi|net|bt|usb|pci|audio|power|light|input|cam)
-                __device__."$cmd" "$@"
-                ;;
-            ls)
-                __device__.ls
-                ;;
-            *)
-                echo "device: Unknown command '$cmd'" >&2
-                return 1
-                ;;
+            monitor|mon) __device__.monitor "$@" ;;
+            network|net) __device__.network "$@" ;;
+            wifi) __device__.wifi "$@" ;;
+            bluetooth|bt) __device__.bluetooth "$@" ;;
+            usb) __device__.usb "$@" ;;
+            pci) __device__.pci "$@" ;;
+            audio) __device__.audio "$@" ;;
+            power) __device__.power "$@" ;;
+            light) __device__.light "$@" ;;
+            input) __device__.input "$@" ;;
+            camera|cam) __device__.camera "$@" ;;
+            ls) __device__.ls ;;
+            *) echo "device: Unknown command '$cmd'" >&2; return 1 ;;
         esac
     }
 
@@ -612,27 +816,37 @@ EOF
         }
 
         if [[ "${COMP_CWORD}" == 1 ]]; then
-            COMPREPLY=( $(compgen -W "mon wifi net bt usb pci audio power light input cam ls --help -h" -- "$cur") )
+            COMPREPLY=( $(compgen -W "monitor network wifi bluetooth usb pci audio power light input camera ls --help -h" -- "$cur") )
             return 0
         fi
 
-        if [[ "$base_cmd" == "mon" ]]; then
-            if [[ "${COMP_CWORD}" == 2 ]]; then
-                COMPREPLY=( $(compgen -W "ls enable disable mv" -- "$cur") )
-                return 0
-            fi
-
-            _get_mons() {
+        _get_mons() {
+            if __device__.has xrandr; then
                 local line mons=""
                 while read -r line; do
                     [[ "$line" == *" connected "* ]] && mons+="${line%% *} "
                 done < <(xrandr)
                 echo "$mons"
-            }
+            else
+                local d name status
+                for d in /sys/class/drm/card*-*; do
+                    [[ -d "$d" ]] || continue
+                    status=$(cat "$d/status" 2>/dev/null)
+                    [[ "$status" == "connected" ]] || continue
+                    name="${d##*/}"; name="${name#card*-}"
+                    [[ -n "$name" ]] && echo "$name "
+                done
+            fi
+        }
 
+        if [[ "$base_cmd" == "monitor" ]]; then
+            if [[ "${COMP_CWORD}" == 2 ]]; then
+                COMPREPLY=( $(compgen -W "ls enable disable move" -- "$cur") )
+                return 0
+            fi
             if [[ "$sub_cmd" == "ls" && "$cur" == -* ]]; then
                 COMPREPLY=( $(compgen -W "-a --all -e --enabled -d --disabled" -- "$cur") )
-            elif [[ "$sub_cmd" == "mv" ]]; then
+            elif [[ "$sub_cmd" == "move" ]]; then
                 local dir_flags="-l --left -r --right -a --above -b --below -s --same-as"
                 if [[ "${COMP_CWORD}" == 3 || "${COMP_CWORD}" == 4 ]]; then
                     if [[ "$cur" == -* ]]; then
@@ -649,6 +863,10 @@ EOF
                 fi
             elif [[ "$sub_cmd" == "enable" || "$sub_cmd" == "disable" ]]; then
                 COMPREPLY=( $(compgen -W "$(_get_mons)" -- "$cur") )
+            fi
+        elif [[ "$base_cmd" == "network" || "$base_cmd" == "usb" || "$base_cmd" == "pci" || "$base_cmd" == "power" || "$base_cmd" == "camera" ]]; then
+            if [[ "${COMP_CWORD}" == 2 ]]; then
+                COMPREPLY=( $(compgen -W "ls" -- "$cur") )
             fi
         elif [[ "$base_cmd" == "wifi" ]]; then
             if [[ "${COMP_CWORD}" == 2 ]]; then
@@ -672,9 +890,9 @@ EOF
                     COMPREPLY=( $(compgen -W "--id --pass" -- "$cur") )
                 fi
             fi
-        elif [[ "$base_cmd" == "bt" ]]; then
+        elif [[ "$base_cmd" == "bluetooth" ]]; then
             if [[ "${COMP_CWORD}" == 2 ]]; then
-                COMPREPLY=( $(compgen -W "ls connect disconnect rm" -- "$cur") )
+                COMPREPLY=( $(compgen -W "ls connect disconnect remove" -- "$cur") )
                 return 0
             fi
 
@@ -682,14 +900,10 @@ EOF
                 bluetoothctl devices 2>/dev/null | awk '$1 == "Device" { print $2 }'
             }
 
-            if [[ "$sub_cmd" == "connect" || "$sub_cmd" == "disconnect" || "$sub_cmd" == "rm" ]]; then
+            if [[ "$sub_cmd" == "connect" || "$sub_cmd" == "disconnect" || "$sub_cmd" == "remove" || "$sub_cmd" == "rm" ]]; then
                 COMPREPLY=( $(compgen -W "$(_get_bt_addrs)" -- "$cur") )
             elif [[ "$sub_cmd" == "ls" && "$cur" == -* ]]; then
                 COMPREPLY=( $(compgen -W "-p --paired" -- "$cur") )
-            fi
-        elif [[ "$base_cmd" == "net" || "$base_cmd" == "usb" || "$base_cmd" == "pci" || "$base_cmd" == "power" ]]; then
-            if [[ "${COMP_CWORD}" == 2 ]]; then
-                COMPREPLY=( $(compgen -W "ls" -- "$cur") )
             fi
         elif [[ "$base_cmd" == "audio" ]]; then
             if [[ "${COMP_CWORD}" == 2 ]]; then
@@ -706,10 +920,6 @@ EOF
                 COMPREPLY=( $(compgen -W "ls disable enable" -- "$cur") )
             elif [[ "$sub_cmd" == "disable" || "$sub_cmd" == "enable" ]]; then
                 COMPREPLY=( $(compgen -W "$(_get_input_ids)" -- "$cur") )
-            fi
-        elif [[ "$base_cmd" == "cam" ]]; then
-            if [[ "${COMP_CWORD}" == 2 ]]; then
-                COMPREPLY=( $(compgen -W "ls" -- "$cur") )
             fi
         fi
     }
